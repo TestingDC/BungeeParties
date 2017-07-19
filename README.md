@@ -1,0 +1,2 @@
+# BungeeParties
+BungeeCord party plugin
