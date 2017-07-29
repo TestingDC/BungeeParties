@@ -3,6 +3,7 @@ package Core;
 import java.util.ArrayList;
 import java.util.List;
 
+import net.md_5.bungee.api.ChatColor;
 import net.md_5.bungee.api.chat.ComponentBuilder;
 import net.md_5.bungee.api.connection.ProxiedPlayer;
 
@@ -25,6 +26,7 @@ public class Party {
 	public Party(ProxiedPlayer leader, int poolNumber) {
 		this.leader = leader;
 		this.players = new ArrayList<ProxiedPlayer>();
+		players.add(leader);
 		this.partyPoolNumber = poolNumber;
 		this.partyName = leader.getDisplayName() + "'s Party";
 		this.inactiveTimer = Main.inactiveRemovalTime;
@@ -32,15 +34,34 @@ public class Party {
 	
 	public void addPlayer(ProxiedPlayer player) {
 		players.add(player);
+		if(!Main.sqlConnector.isPlayerInTable(player)) {
+			Main.sqlConnector.addBlankPlayer(player); // New Player :D!
+		}
+		Main.sqlConnector.setPartyNameForPlayer(player, partyName);
+		Main.sqlConnector.setPartyStatusForPlayer(player, true);
+		Main.sqlConnector.setPoolNumberForPlayer(player, partyPoolNumber);
 		player.sendMessage(new ComponentBuilder("You have joined: " + partyName).create());
 	}
 	
 	public void removePlayer(ProxiedPlayer player) {
 		players.remove(player);
+		Main.sqlConnector.setPartyNameForPlayer(player, null);
+		Main.sqlConnector.setPartyStatusForPlayer(player, false);
+		Main.sqlConnector.setPoolNumberForPlayer(player, -1);
 		player.sendMessage(new ComponentBuilder("You have left: " + partyName).create());
-		if(player.equals(leader)) {
+		if(player.equals(leader) && players.size() > 0) {
 			changePartyLeader(players.get(0), "Party Leader has left.");
+		} else if(player.equals(leader) && players.isEmpty()) {
+			disband();
 		}
+	}
+	
+	public void kickPlayer(ProxiedPlayer player) {
+		players.remove(player);
+		Main.sqlConnector.setPartyNameForPlayer(player, null);
+		Main.sqlConnector.setPartyStatusForPlayer(player, false);
+		Main.sqlConnector.setPoolNumberForPlayer(player, -1);
+		player.sendMessage(new ComponentBuilder("You have been kicked from: " + partyName).create());
 	}
 	
 	public boolean containsPlayer(ProxiedPlayer player) {
@@ -70,16 +91,31 @@ public class Party {
 		}
 	}
 	
-	public void update() {
-		// Something to do with inactive timer :L
-		if(!leader.isConnected() && players.isEmpty()) {
-			disband();
-		}
+	public void setPartyNameWithFormat(String partyName) {
+		partyName = partyName.replace("&", "§");
+		this.partyName = partyName;
+	}
+	
+	public void setPartyNameNoFormat(String partyName) {
+		this.partyName = partyName;
+	}
+	
+	public String getPartyName() {
+		return partyName;
+	}
+	
+	public ProxiedPlayer getPartyLeader() {
+		return leader;
+	}
+	
+	public List<ProxiedPlayer> getPlayers() {
+		return players;
 	}
 	
 	public void reuse(ProxiedPlayer leader, ArrayList<ProxiedPlayer> players) {
 		this.leader = leader;
 		this.partyName = leader.getDisplayName() + "'s Party";
+		players.add(leader);
 		if(players != null) {
 			this.players = players;
 		}
@@ -94,11 +130,15 @@ public class Party {
 		if(reason != null) {
 			for(ProxiedPlayer player : players) {
 				player.sendMessage(new ComponentBuilder("Party Disbanded. Reason: " + reason).create());
+				Main.sqlConnector.setPartyNameForPlayer(player, "");
+				Main.sqlConnector.setPartyStatusForPlayer(player, false);
+				Main.sqlConnector.setPoolNumberForPlayer(player, -1);
 			}
 		}
+		Main.instance.getProxy().getConsole().sendMessage(new ComponentBuilder("Party: " + getPartyName() + ChatColor.WHITE +" PN: " + partyPoolNumber + " returned to the PartyPool.").color(ChatColor.WHITE).create());
 		players.clear();
 		leader = null;
 		partyName = "";
-		// return to party pool. //POP.
+		Main.partyPool.returnPartyToPool(this);
 	}
 }
